@@ -1,6 +1,7 @@
 {
   "name": "cialfor-contact-api",
   "private": true,
+  "type": "module",
   "dependencies": {
     "resend": "^3.2.0"
   }
