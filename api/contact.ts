@@ -35,9 +35,12 @@ function chooseRecipient(inquiryType?: string) {
     : SALES_EMAIL;
 }
 
-function getClientIp(req: Request) {
-  const xff = req.headers.get('x-forwarded-for') || '';
-  return xff ? xff.split(',')[0].trim() : 'unknown';
+function getClientIp(req: any) {
+  const xff = req.headers['x-forwarded-for'];
+  if (typeof xff === 'string') {
+    return xff.split(',')[0].trim();
+  }
+  return 'unknown';
 }
 
 function isRateLimited(ip: string) {
@@ -49,14 +52,25 @@ function isRateLimited(ip: string) {
   return recent.length > RATE_MAX;
 }
 
-export default async function handler(req: Request) {
+export default async function handler(req: any) {
   if (req.method !== 'POST') {
     return json({ ok: false, error: 'Method not allowed' }, 405);
   }
 
   try {
     const ip = getClientIp(req);
-    const body = (await req.json()) as ReqBody;
+
+    const body = await new Promise<ReqBody>((resolve, reject) => {
+      let data = '';
+      req.on('data', (chunk: string) => (data += chunk));
+      req.on('end', () => {
+        try {
+          resolve(JSON.parse(data));
+        } catch {
+          reject(new Error('Invalid JSON'));
+        }
+      });
+    });
 
     if (body.hp_name) {
       return json({ ok: true });
@@ -77,18 +91,7 @@ export default async function handler(req: Request) {
       to: chooseRecipient(inquiryType),
       reply_to: email,
       subject: `New Contact Inquiry — ${inquiryType} — ${name}`,
-      html: `
-        <h2>New Contact Inquiry</h2>
-        <p><strong>Name:</strong> ${name}</p>
-        <p><strong>Email:</strong> ${email}</p>
-        <p><strong>Phone:</strong> ${phone || '-'}</p>
-        <p><strong>Company:</strong> ${company || '-'}</p>
-        <p><strong>Inquiry Type:</strong> ${inquiryType}</p>
-        <p><strong>Threat Level:</strong> ${threatLevel || '-'}</p>
-        <hr/>
-        <p>${(message || '').replace(/\n/g, '<br/>')}</p>
-        <p style="font-size:12px;color:#666">IP: ${ip}</p>
-      `,
+      html: `<p>${message}</p>`,
     });
 
     return json({ ok: true });
